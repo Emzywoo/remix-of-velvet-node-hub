@@ -14,7 +14,210 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      earnings_snapshots: {
+        Row: {
+          created_at: string
+          gb_processed: number
+          id: string
+          jobs_completed: number
+          snapshot_date: string
+          total_coins: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          gb_processed?: number
+          id?: string
+          jobs_completed?: number
+          snapshot_date: string
+          total_coins?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          gb_processed?: number
+          id?: string
+          jobs_completed?: number
+          snapshot_date?: string
+          total_coins?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      network_config: {
+        Row: {
+          active_miners: number
+          base_rate_per_gb: number
+          coin_to_usd_rate: number
+          id: number
+          minimum_payout_usd: number
+          monthly_pool_usd: number
+        }
+        Insert: {
+          active_miners?: number
+          base_rate_per_gb?: number
+          coin_to_usd_rate?: number
+          id?: number
+          minimum_payout_usd?: number
+          monthly_pool_usd?: number
+        }
+        Update: {
+          active_miners?: number
+          base_rate_per_gb?: number
+          coin_to_usd_rate?: number
+          id?: number
+          minimum_payout_usd?: number
+          monthly_pool_usd?: number
+        }
+        Relationships: []
+      }
+      nodes: {
+        Row: {
+          active_jobs: number
+          created_at: string
+          id: string
+          label: string
+          last_seen: string | null
+          latency_ms: number
+          miner_token: string
+          region: string
+          status: string
+          tier: number
+          updated_at: string
+          user_id: string
+          waitlist_position: number | null
+        }
+        Insert: {
+          active_jobs?: number
+          created_at?: string
+          id?: string
+          label?: string
+          last_seen?: string | null
+          latency_ms?: number
+          miner_token: string
+          region?: string
+          status?: string
+          tier?: number
+          updated_at?: string
+          user_id: string
+          waitlist_position?: number | null
+        }
+        Update: {
+          active_jobs?: number
+          created_at?: string
+          id?: string
+          label?: string
+          last_seen?: string | null
+          latency_ms?: number
+          miner_token?: string
+          region?: string
+          status?: string
+          tier?: number
+          updated_at?: string
+          user_id?: string
+          waitlist_position?: number | null
+        }
+        Relationships: []
+      }
+      payout_methods: {
+        Row: {
+          created_at: string
+          destination: string
+          id: string
+          is_default: boolean
+          method: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          destination: string
+          id?: string
+          is_default?: boolean
+          method: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          destination?: string
+          id?: string
+          is_default?: boolean
+          method?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      payouts: {
+        Row: {
+          amount_usd: number
+          created_at: string
+          destination: string
+          id: string
+          method: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          amount_usd: number
+          created_at?: string
+          destination: string
+          id?: string
+          method: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          amount_usd?: number
+          created_at?: string
+          destination?: string
+          id?: string
+          method?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          country: string | null
+          created_at: string
+          email: string
+          full_name: string
+          id: string
+          notify_offline: boolean
+          notify_payout: boolean
+          notify_tier: boolean
+          sound_enabled: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          country?: string | null
+          created_at?: string
+          email?: string
+          full_name?: string
+          id?: string
+          notify_offline?: boolean
+          notify_payout?: boolean
+          notify_tier?: boolean
+          sound_enabled?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          country?: string | null
+          created_at?: string
+          email?: string
+          full_name?: string
+          id?: string
+          notify_offline?: boolean
+          notify_payout?: boolean
+          notify_tier?: boolean
+          sound_enabled?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
