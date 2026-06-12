@@ -47,7 +47,7 @@ function AuthPage() {
         if (error) throw error;
         toast.success("Signed in");
       }
-      navigate({ to: "/_authenticated/dashboard" });
+      navigate({ to: "/dashboard" });
     } catch (err: any) {
       toast.error(err.message || "Something went wrong");
     } finally {

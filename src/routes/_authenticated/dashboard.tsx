@@ -100,7 +100,7 @@ function DashboardContent({ data }: { data: Awaited<ReturnType<typeof getDashboa
       <section>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold">Your Nodes</h2>
-          <Link to="/_authenticated/setup" className="text-sm text-pulse hover:underline">+ Add node</Link>
+          <Link to="/setup" className="text-sm text-pulse hover:underline">+ Add node</Link>
         </div>
         {data.nodes.length === 0 ? (
           <EmptyNodes />
@@ -190,7 +190,7 @@ function EmptyNodes() {
   return (
     <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
       <p className="text-sm text-muted-foreground">No nodes yet. Add your first node to start earning.</p>
-      <Link to="/_authenticated/setup" className="mt-4 inline-flex rounded-lg bg-rift px-4 py-2 text-sm font-semibold text-rift-foreground">
+      <Link to="/setup" className="mt-4 inline-flex rounded-lg bg-rift px-4 py-2 text-sm font-semibold text-rift-foreground">
         Get Your Node Running
       </Link>
     </div>
