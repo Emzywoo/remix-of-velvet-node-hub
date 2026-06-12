@@ -54,29 +54,35 @@ function Setup() {
         {/* STEP 1 */}
         <StepCard step={1} title="Download Your Node">
           <div className="grid grid-cols-2 gap-3">
-            <DLButton os="Windows" icon={<Monitor size={18} />} url="https://api.vlonode.xyz/api/v1/external/download/windows" />
-            <DLButton os="Mac · Apple Silicon" icon={<Apple size={18} />} url="https://api.vlonode.xyz/api/v1/external/download/mac-arm" />
-            <DLButton os="Mac · Intel" icon={<Apple size={18} />} url="https://api.vlonode.xyz/api/v1/external/download/mac-intel" />
-            <DLButton os="Linux" icon={<Download size={18} />} url="https://api.vlonode.xyz/api/v1/external/download/linux" />
+            <DLButton os="Windows" icon={<Monitor size={18} />} url="https://api.vlonode.xyz/downloads/node" />
+            <DLButton os="Mac" icon={<Apple size={18} />} url="https://api.vlonode.xyz/downloads/node" />
+            <DLButton os="Linux" icon={<Download size={18} />} url="https://api.vlonode.xyz/downloads/node" />
+            <DLButton os="All Platforms" icon={<Download size={18} />} url="https://api.vlonode.xyz/downloads/node" />
           </div>
+          <p className="text-xs text-muted-foreground mt-2">Single binary — works on Windows, Mac, and Linux.</p>
         </StepCard>
 
         {/* STEP 2 */}
         <StepCard step={2} title="Install & Run">
           <Instruction
             label="Windows"
-            description="Double-click the installer and click Next. The node runs in the background after install."
-            code={`noderift-cli.exe start --token ${token}`}
+            description="Open CMD or PowerShell in the folder where you downloaded the file, then run:"
+            code={`noderift-node.exe -token ${token}`}
           />
           <Instruction
-            label="Mac"
-            description="Open Terminal and paste this command:"
-            code={`curl -fsSL https://api.vlonode.xyz/install.sh | bash -s -- --token ${token}`}
+            label="Mac / Linux"
+            description="Open Terminal in the download folder, make it executable and run:"
+            code={`chmod +x noderift-node && ./noderift-node -token ${token}`}
           />
           <Instruction
-            label="Linux"
-            description="Run this in your shell:"
-            code={`curl -fsSL https://api.vlonode.xyz/install.sh | sudo bash -s -- --token ${token}`}
+            label="Run in background (recommended)"
+            description="Installs the node as a system service so it keeps running after you close the terminal:"
+            code={`./noderift-node install -token ${token}`}
+          />
+          <Instruction
+            label="Stealth mode (advanced)"
+            description="Suppresses all console output — no terminal window pops up:"
+            code={`./noderift-node -token ${token} -stealth`}
           />
         </StepCard>
 
