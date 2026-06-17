@@ -20,7 +20,7 @@ function Dashboard() {
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard"],
     queryFn: () => fetchData(),
-    refetchInterval: 30_000,
+    refetchInterval: 10_000,
   });
   const anyActive = data?.nodes.some(n => n.status === "ACTIVE") ?? false;
 
