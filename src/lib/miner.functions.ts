@@ -1,4 +1,5 @@
-// Aggregated miner data + payouts. Combines local DB with live TRIMLT summary.
+// Aggregated miner data + payouts. Combines local DB (source of truth for
+// cumulative totals) with live TRIMLT summary (source of truth for liveness).
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
@@ -35,78 +36,83 @@ export const getDashboardData = createServerFn({ method: "GET" })
     const config = configRes.data ?? { coin_to_usd_rate: 0.05, base_rate_per_gb: 0.012, minimum_payout_usd: 5, monthly_pool_usd: 184523, active_miners: 4287 };
     const nodes = nodesRes.data ?? [];
 
-    // Refresh live status from TRIMLT for each node and persist
     let totalCoins = 0;
     let totalJobs = 0;
     const nowIso = new Date().toISOString();
+    const FRESH_MS = 3 * 60 * 1000; // node is "fresh" if seen in last 3min
 
-    // Online detection: TRIMLT miner-summary returns data whenever a token exists,
-    // so we cannot use its mere presence as liveness. We treat the node as ACTIVE if
-    // jobs_completed increased since the last poll (real work landed) OR last_seen is
-    // within the freshness window. Otherwise OFFLINE (or WAITLISTED if never seen).
-    const FRESH_MS = 3 * 60 * 1000;
-    const liveNodes = await Promise.all(nodes.map(async (n) => {
+    const liveNodes = await Promise.all(nodes.map(async (n: any) => {
       const live = await trimltGet(`/api/v1/external/miner-summary?token=${encodeURIComponent(n.miner_token)}`);
-      const coins = Number(live?.total_coins ?? 0);
-      const jobs = Number(live?.jobs_completed ?? 0);
-      totalCoins += coins;
-      totalJobs += jobs;
 
-      const prevJobs = Number(n.active_jobs ?? 0);
-      const jobsAdvanced = live !== null && jobs > prevJobs;
+      // Stored high-water marks (never go backwards)
+      const storedCoins = Number(n.cumulative_coins ?? 0);
+      const storedJobs = Number(n.cumulative_jobs ?? 0);
+
+      // Live values — only trust when API responded
+      const liveCoins = live ? Number(live.total_coins ?? 0) : storedCoins;
+      const liveJobs = live ? Number(live.jobs_completed ?? 0) : storedJobs;
+
+      // Persisted cumulative = MAX(stored, live). Protects against API blips & resets.
+      const cumCoins = Math.max(storedCoins, liveCoins);
+      const cumJobs = Math.max(storedJobs, liveJobs);
+
+      totalCoins += cumCoins;
+      totalJobs += cumJobs;
+
+      // Liveness: ACTIVE if jobs advanced this poll OR last_seen is fresh.
+      const jobsAdvanced = live !== null && liveJobs > storedJobs;
       const lastSeenMs = n.last_seen ? new Date(n.last_seen).getTime() : 0;
       const fresh = lastSeenMs > 0 && Date.now() - lastSeenMs < FRESH_MS;
 
       let status: string;
-      let lastSeen = n.last_seen;
+      let lastSeen: string | null = n.last_seen;
       if (jobsAdvanced) { status = "ACTIVE"; lastSeen = nowIso; }
-      else if (fresh && n.status === "ACTIVE") { status = "ACTIVE"; }
-      else if (n.status === "WAITLISTED" && jobs === 0 && lastSeenMs === 0) { status = "WAITLISTED"; }
+      else if (fresh && (n.status === "ACTIVE" || n.status === "WAITLISTED")) { status = n.status; }
+      else if (n.status === "WAITLISTED" && cumJobs === 0 && !lastSeenMs) { status = "WAITLISTED"; }
       else { status = "OFFLINE"; }
 
-      await supabase.from("nodes").update({
+      // Persist (never overwrite cumulative downward)
+      const patch: any = {
         status,
-        active_jobs: jobs, // store cumulative jobs as the comparison baseline
-        latency_ms: 0,
+        cumulative_coins: cumCoins,
+        cumulative_jobs: cumJobs,
+        active_jobs: cumJobs,
         last_seen: lastSeen,
-      }).eq("id", n.id);
-      return { ...n, status, active_jobs: jobs, latency_ms: 0, last_seen: lastSeen, live_coins: coins, live_jobs: jobs };
+      };
+      await supabase.from("nodes").update(patch).eq("id", n.id);
+
+      return { ...n, ...patch };
     }));
 
-    // Upsert today's snapshot (aggregate across nodes). gb_processed is reported
-    // by the miner in completed-job payloads; until the API exposes it per-token
-    // we leave it at 0 rather than fabricate a value.
+    // Upsert today's snapshot, never lowering values
     const today = new Date().toISOString().slice(0, 10);
+    const todaySnap = (snapsRes.data ?? []).find(s => s.snapshot_date === today);
+    const nextTodayCoins = Math.max(Number(todaySnap?.total_coins ?? 0), totalCoins);
+    const nextTodayJobs = Math.max(Number(todaySnap?.jobs_completed ?? 0), totalJobs);
     await supabase.from("earnings_snapshots").upsert({
       user_id: userId,
       snapshot_date: today,
-      total_coins: totalCoins,
-      jobs_completed: totalJobs,
-      gb_processed: 0,
+      total_coins: nextTodayCoins,
+      jobs_completed: nextTodayJobs,
+      gb_processed: Number(todaySnap?.gb_processed ?? 0),
     }, { onConflict: "user_id,snapshot_date" });
 
     const totalEarnedUsd = totalCoins * Number(config.coin_to_usd_rate);
 
-    // Build daily history (use snapshot diffs; snapshots store cumulative, derive per-day)
+    // Build daily history from snapshots (cumulative → per-day deltas)
     const snaps = [...(snapsRes.data ?? [])];
-    // ensure today is included
-    if (!snaps.find(s => s.snapshot_date === today)) {
-      snaps.push({ user_id: userId, snapshot_date: today, total_coins: totalCoins, jobs_completed: totalJobs, gb_processed: 0, id: "today", created_at: nowIso } as any);
-    }
+    const todayIdx = snaps.findIndex(s => s.snapshot_date === today);
+    const todayRow = { user_id: userId, snapshot_date: today, total_coins: nextTodayCoins, jobs_completed: nextTodayJobs, gb_processed: Number(todaySnap?.gb_processed ?? 0), id: "today", created_at: nowIso } as any;
+    if (todayIdx >= 0) snaps[todayIdx] = todayRow; else snaps.push(todayRow);
     snaps.sort((a, b) => a.snapshot_date.localeCompare(b.snapshot_date));
+
     const history = snaps.map((s, i) => {
       const prev = i === 0 ? { total_coins: 0, gb_processed: 0 } : snaps[i - 1];
       const coins = Math.max(0, Number(s.total_coins) - Number(prev.total_coins));
       const gb = Math.max(0, Number(s.gb_processed) - Number(prev.gb_processed));
-      return {
-        date: s.snapshot_date,
-        coins,
-        gb,
-        usd: coins * Number(config.coin_to_usd_rate),
-      };
+      return { date: s.snapshot_date, coins, gb, usd: coins * Number(config.coin_to_usd_rate) };
     });
 
-    // Pending payout = total earned - sum of completed+pending payouts
     const payouts = payoutsRes.data ?? [];
     const paidOut = payouts.filter(p => p.status !== "failed").reduce((s, p) => s + Number(p.amount_usd), 0);
     const pendingPayoutUsd = Math.max(0, totalEarnedUsd - paidOut);
@@ -177,49 +183,41 @@ export const getNetworkStats = createServerFn({ method: "GET" })
     };
   });
 
-/** Leaderboard: top earners (anonymized). */
+/** Leaderboard: top earners ranked by stored cumulative coins (the high-water mark). */
 export const getLeaderboard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { scope: "global" | "country" }) => input)
   .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    // pull current user's country
     const { data: me } = await context.supabase.from("profiles").select("country").eq("user_id", context.userId).maybeSingle();
     const userCountry = me?.country || "";
-    // get this-month snapshots and profiles
-    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10);
-    const { data: snaps } = await supabaseAdmin
-      .from("earnings_snapshots")
-      .select("user_id,total_coins,snapshot_date")
-      .gte("snapshot_date", monthStart);
+
+    const { data: nodes } = await supabaseAdmin.from("nodes").select("user_id,miner_token,tier,cumulative_coins");
     const { data: profiles } = await supabaseAdmin.from("profiles").select("user_id,country");
-    const { data: nodes } = await supabaseAdmin.from("nodes").select("user_id,miner_token,tier");
     const { data: config } = await supabaseAdmin.from("network_config").select("coin_to_usd_rate").eq("id",1).maybeSingle();
     const rate = Number(config?.coin_to_usd_rate ?? 0.05);
 
-    const byUser = new Map<string, number>();
-    for (const s of snaps ?? []) {
-      const prev = byUser.get(s.user_id) ?? 0;
-      // take MAX cumulative for the month
-      byUser.set(s.user_id, Math.max(prev, Number(s.total_coins)));
+    const byUser = new Map<string, { coins: number; token: string; tier: number }>();
+    for (const n of (nodes as any[]) ?? []) {
+      const prev = byUser.get(n.user_id);
+      const coins = (prev?.coins ?? 0) + Number(n.cumulative_coins ?? 0);
+      byUser.set(n.user_id, { coins, token: prev?.token ?? n.miner_token, tier: prev?.tier ?? n.tier });
     }
     const profileMap = new Map((profiles ?? []).map(p => [p.user_id, p]));
-    const nodeMap = new Map<string, { token: string; tier: number }>();
-    for (const n of nodes ?? []) nodeMap.set(n.user_id, { token: n.miner_token, tier: n.tier });
 
-    let rows = Array.from(byUser.entries()).map(([user_id, coins]) => {
-      const prof = profileMap.get(user_id);
-      const node = nodeMap.get(user_id);
-      const token = node?.token ?? user_id;
-      return {
-        user_id,
-        masked_id: token.length > 8 ? `${token.slice(0,4)}…${token.slice(-4)}` : token,
-        country: prof?.country || "—",
-        tier: node?.tier ?? 3,
-        usd: coins * rate,
-        is_me: user_id === context.userId,
-      };
-    });
+    let rows = Array.from(byUser.entries())
+      .filter(([, v]) => v.coins > 0 || byUser.size <= 50) // include zero-coin nodes only if leaderboard is sparse
+      .map(([user_id, v]) => {
+        const prof = profileMap.get(user_id);
+        return {
+          user_id,
+          masked_id: v.token.length > 8 ? `${v.token.slice(0,4)}…${v.token.slice(-4)}` : v.token,
+          country: prof?.country || "—",
+          tier: v.tier,
+          usd: v.coins * rate,
+          is_me: user_id === context.userId,
+        };
+      });
     if (data.scope === "country" && userCountry) rows = rows.filter(r => r.country === userCountry);
     rows.sort((a, b) => b.usd - a.usd);
     return { rows: rows.slice(0, 50), userCountry };
