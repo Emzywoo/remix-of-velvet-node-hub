@@ -73,15 +73,16 @@ export const getDashboardData = createServerFn({ method: "GET" })
       return { ...n, status, active_jobs: jobs, latency_ms: 0, last_seen: lastSeen, live_coins: coins, live_jobs: jobs };
     }));
 
-    // Upsert today's snapshot (aggregate across nodes)
+    // Upsert today's snapshot (aggregate across nodes). gb_processed is reported
+    // by the miner in completed-job payloads; until the API exposes it per-token
+    // we leave it at 0 rather than fabricate a value.
     const today = new Date().toISOString().slice(0, 10);
-    const gbToday = totalJobs * 0.05; // approx
     await supabase.from("earnings_snapshots").upsert({
       user_id: userId,
       snapshot_date: today,
       total_coins: totalCoins,
       jobs_completed: totalJobs,
-      gb_processed: gbToday,
+      gb_processed: 0,
     }, { onConflict: "user_id,snapshot_date" });
 
     const totalEarnedUsd = totalCoins * Number(config.coin_to_usd_rate);
@@ -90,7 +91,7 @@ export const getDashboardData = createServerFn({ method: "GET" })
     const snaps = [...(snapsRes.data ?? [])];
     // ensure today is included
     if (!snaps.find(s => s.snapshot_date === today)) {
-      snaps.push({ user_id: userId, snapshot_date: today, total_coins: totalCoins, jobs_completed: totalJobs, gb_processed: gbToday, id: "today", created_at: nowIso } as any);
+      snaps.push({ user_id: userId, snapshot_date: today, total_coins: totalCoins, jobs_completed: totalJobs, gb_processed: 0, id: "today", created_at: nowIso } as any);
     }
     snaps.sort((a, b) => a.snapshot_date.localeCompare(b.snapshot_date));
     const history = snaps.map((s, i) => {
