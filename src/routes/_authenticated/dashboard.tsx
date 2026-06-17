@@ -20,7 +20,7 @@ function Dashboard() {
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard"],
     queryFn: () => fetchData(),
-    refetchInterval: 30_000,
+    refetchInterval: 10_000,
   });
   const anyActive = data?.nodes.some(n => n.status === "ACTIVE") ?? false;
 
@@ -160,10 +160,10 @@ function DashboardContent({ data }: { data: Awaited<ReturnType<typeof getDashboa
         <TierProgressCard tier={data.nodes[0]?.tier ?? 3} />
         <AchievementCard
           icon={<Trophy className="text-pulse" />}
-          title="Country rank"
-          subtitle="Climb the leaderboard"
-          rank={Math.floor(Math.random() * 200) + 12}
+          title="Leaderboard"
+          subtitle="See where you rank globally and in your country."
         />
+
       </section>
 
       {showWithdraw && (

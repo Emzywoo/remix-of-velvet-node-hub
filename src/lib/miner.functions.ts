@@ -40,36 +40,49 @@ export const getDashboardData = createServerFn({ method: "GET" })
     let totalJobs = 0;
     const nowIso = new Date().toISOString();
 
+    // Online detection: TRIMLT miner-summary returns data whenever a token exists,
+    // so we cannot use its mere presence as liveness. We treat the node as ACTIVE if
+    // jobs_completed increased since the last poll (real work landed) OR last_seen is
+    // within the freshness window. Otherwise OFFLINE (or WAITLISTED if never seen).
+    const FRESH_MS = 3 * 60 * 1000;
     const liveNodes = await Promise.all(nodes.map(async (n) => {
       const live = await trimltGet(`/api/v1/external/miner-summary?token=${encodeURIComponent(n.miner_token)}`);
-      const online = !!live;
       const coins = Number(live?.total_coins ?? 0);
       const jobs = Number(live?.jobs_completed ?? 0);
       totalCoins += coins;
       totalJobs += jobs;
-      // Derived metrics
-      const status = online ? "ACTIVE" : (n.status === "WAITLISTED" ? "WAITLISTED" : "OFFLINE");
-      const activeJobs = online ? Math.min(jobs, 12) % 13 : 0;
-      const latency = online ? 40 + Math.floor(Math.random() * 60) : 0;
-      // Persist a snapshot
+
+      const prevJobs = Number(n.active_jobs ?? 0);
+      const jobsAdvanced = live !== null && jobs > prevJobs;
+      const lastSeenMs = n.last_seen ? new Date(n.last_seen).getTime() : 0;
+      const fresh = lastSeenMs > 0 && Date.now() - lastSeenMs < FRESH_MS;
+
+      let status: string;
+      let lastSeen = n.last_seen;
+      if (jobsAdvanced) { status = "ACTIVE"; lastSeen = nowIso; }
+      else if (fresh && n.status === "ACTIVE") { status = "ACTIVE"; }
+      else if (n.status === "WAITLISTED" && jobs === 0 && lastSeenMs === 0) { status = "WAITLISTED"; }
+      else { status = "OFFLINE"; }
+
       await supabase.from("nodes").update({
         status,
-        active_jobs: activeJobs,
-        latency_ms: latency,
-        last_seen: online ? nowIso : n.last_seen,
+        active_jobs: jobs, // store cumulative jobs as the comparison baseline
+        latency_ms: 0,
+        last_seen: lastSeen,
       }).eq("id", n.id);
-      return { ...n, status, active_jobs: activeJobs, latency_ms: latency, last_seen: online ? nowIso : n.last_seen, live_coins: coins, live_jobs: jobs };
+      return { ...n, status, active_jobs: jobs, latency_ms: 0, last_seen: lastSeen, live_coins: coins, live_jobs: jobs };
     }));
 
-    // Upsert today's snapshot (aggregate across nodes)
+    // Upsert today's snapshot (aggregate across nodes). gb_processed is reported
+    // by the miner in completed-job payloads; until the API exposes it per-token
+    // we leave it at 0 rather than fabricate a value.
     const today = new Date().toISOString().slice(0, 10);
-    const gbToday = totalJobs * 0.05; // approx
     await supabase.from("earnings_snapshots").upsert({
       user_id: userId,
       snapshot_date: today,
       total_coins: totalCoins,
       jobs_completed: totalJobs,
-      gb_processed: gbToday,
+      gb_processed: 0,
     }, { onConflict: "user_id,snapshot_date" });
 
     const totalEarnedUsd = totalCoins * Number(config.coin_to_usd_rate);
@@ -78,7 +91,7 @@ export const getDashboardData = createServerFn({ method: "GET" })
     const snaps = [...(snapsRes.data ?? [])];
     // ensure today is included
     if (!snaps.find(s => s.snapshot_date === today)) {
-      snaps.push({ user_id: userId, snapshot_date: today, total_coins: totalCoins, jobs_completed: totalJobs, gb_processed: gbToday, id: "today", created_at: nowIso } as any);
+      snaps.push({ user_id: userId, snapshot_date: today, total_coins: totalCoins, jobs_completed: totalJobs, gb_processed: 0, id: "today", created_at: nowIso } as any);
     }
     snaps.sort((a, b) => a.snapshot_date.localeCompare(b.snapshot_date));
     const history = snaps.map((s, i) => {
