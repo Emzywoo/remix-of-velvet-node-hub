@@ -75,6 +75,8 @@ export type Database = {
         Row: {
           active_jobs: number
           created_at: string
+          cumulative_coins: number
+          cumulative_jobs: number
           id: string
           label: string
           last_seen: string | null
@@ -90,6 +92,8 @@ export type Database = {
         Insert: {
           active_jobs?: number
           created_at?: string
+          cumulative_coins?: number
+          cumulative_jobs?: number
           id?: string
           label?: string
           last_seen?: string | null
@@ -105,6 +109,8 @@ export type Database = {
         Update: {
           active_jobs?: number
           created_at?: string
+          cumulative_coins?: number
+          cumulative_jobs?: number
           id?: string
           label?: string
           last_seen?: string | null

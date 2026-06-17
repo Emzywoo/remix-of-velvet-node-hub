@@ -1,0 +1,1 @@
+ALTER TABLE public.nodes ADD COLUMN IF NOT EXISTS cumulative_coins numeric NOT NULL DEFAULT 0; ALTER TABLE public.nodes ADD COLUMN IF NOT EXISTS cumulative_jobs integer NOT NULL DEFAULT 0;
