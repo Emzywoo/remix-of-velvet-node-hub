@@ -53,7 +53,6 @@ export const syncMinerWithCore = createServerFn({ method: "POST" })
         label: data.label || "My Node",
         region: data.region || "Global",
         status: "WAITLISTED",
-        waitlist_position: Math.floor(Math.random() * 500) + 50,
       })
       .select()
       .single();
