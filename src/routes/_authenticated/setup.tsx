@@ -30,7 +30,7 @@ function Setup() {
   const queryClient = useQueryClient();
   const fetchData = useServerFn(getDashboardData);
   const sync = useServerFn(syncMinerWithCore);
-  const { data, refetch } = useQuery({ queryKey: ["dashboard"], queryFn: () => fetchData(), refetchInterval: 5000 });
+  const { data, refetch } = useQuery({ queryKey: ["dashboard"], queryFn: () => fetchData(), refetchInterval: 3000 });
 
   const anyActive = data?.nodes.some(n => n.status === "ACTIVE") ?? false;
   const primaryNode = data?.nodes[0];
