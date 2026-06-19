@@ -39,39 +39,46 @@ export const getDashboardData = createServerFn({ method: "GET" })
     let totalCoins = 0;
     let totalJobs = 0;
     const nowIso = new Date().toISOString();
-    const FRESH_MS = 3 * 60 * 1000; // node is "fresh" if seen in last 3min
 
     const liveNodes = await Promise.all(nodes.map(async (n: any) => {
       const live = await trimltGet(`/api/v1/external/miner-summary?token=${encodeURIComponent(n.miner_token)}`);
 
-      // Stored high-water marks (never go backwards)
       const storedCoins = Number(n.cumulative_coins ?? 0);
       const storedJobs = Number(n.cumulative_jobs ?? 0);
 
-      // Live values — only trust when API responded
+      // Trust the API's per-node breakdown — it's authoritative for liveness.
+      const apiNodes: any[] = Array.isArray(live?.nodes) ? live.nodes : [];
+      const anyOnline = apiNodes.some(x => x?.is_online === true) || Number(live?.online_nodes ?? 0) > 0;
+      const latestHeartbeat = apiNodes
+        .map(x => x?.last_heartbeat)
+        .filter(Boolean)
+        .sort()
+        .pop();
+
       const liveCoins = live ? Number(live.total_coins ?? 0) : storedCoins;
       const liveJobs = live ? Number(live.jobs_completed ?? 0) : storedJobs;
 
-      // Persisted cumulative = MAX(stored, live). Protects against API blips & resets.
       const cumCoins = Math.max(storedCoins, liveCoins);
       const cumJobs = Math.max(storedJobs, liveJobs);
 
       totalCoins += cumCoins;
       totalJobs += cumJobs;
 
-      // Liveness: ACTIVE if jobs advanced this poll OR last_seen is fresh.
-      const jobsAdvanced = live !== null && liveJobs > storedJobs;
-      const lastSeenMs = n.last_seen ? new Date(n.last_seen).getTime() : 0;
-      const fresh = lastSeenMs > 0 && Date.now() - lastSeenMs < FRESH_MS;
-
       let status: string;
-      let lastSeen: string | null = n.last_seen;
-      if (jobsAdvanced) { status = "ACTIVE"; lastSeen = nowIso; }
-      else if (fresh && (n.status === "ACTIVE" || n.status === "WAITLISTED")) { status = n.status; }
-      else if (n.status === "WAITLISTED" && cumJobs === 0 && !lastSeenMs) { status = "WAITLISTED"; }
-      else { status = "OFFLINE"; }
+      let lastSeen: string | null = latestHeartbeat ?? n.last_seen;
 
-      // Persist (never overwrite cumulative downward)
+      if (live === null) {
+        // API unreachable — keep last known status, don't flip to OFFLINE.
+        status = n.status || "WAITLISTED";
+      } else if (anyOnline) {
+        status = "ACTIVE";
+        lastSeen = latestHeartbeat ?? nowIso;
+      } else if (cumJobs === 0 && !latestHeartbeat) {
+        status = "WAITLISTED";
+      } else {
+        status = "OFFLINE";
+      }
+
       const patch: any = {
         status,
         cumulative_coins: cumCoins,
