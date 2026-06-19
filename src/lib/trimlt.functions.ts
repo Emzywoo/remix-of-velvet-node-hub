@@ -3,7 +3,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-const TRIMLT_BASE = "https://api.vlonode.xyz";
+const TRIMLT_BASE = "https://api.veltrex.xyz";
 
 async function trimltFetch(path: string, init: RequestInit = {}) {
   const key = process.env.TRIMLT_WEB_KEY;
