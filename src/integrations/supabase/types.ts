@@ -44,6 +44,33 @@ export type Database = {
         }
         Relationships: []
       }
+      leaderboard_entries: {
+        Row: {
+          country: string
+          masked_id: string
+          tier: number
+          updated_at: string
+          usd: number
+          user_id: string
+        }
+        Insert: {
+          country?: string
+          masked_id?: string
+          tier?: number
+          updated_at?: string
+          usd?: number
+          user_id: string
+        }
+        Update: {
+          country?: string
+          masked_id?: string
+          tier?: number
+          updated_at?: string
+          usd?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       network_config: {
         Row: {
           active_miners: number
@@ -229,7 +256,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      refresh_leaderboard_entry_for_user: {
+        Args: { _user_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never

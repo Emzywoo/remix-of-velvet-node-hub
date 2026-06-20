@@ -2,6 +2,8 @@
 // cumulative totals) with live TRIMLT summary (source of truth for liveness).
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 
 const TRIMLT_BASE = "https://api.veltrex.xyz";
 
@@ -15,6 +17,15 @@ async function trimltGet(path: string) {
     if (!res.ok) return null;
     return await res.json();
   } catch { return null; }
+}
+
+function createPublicSupabaseClient() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) throw new Error("Backend publishable credentials are not configured");
+  return createClient<Database>(url, key, {
+    auth: { storage: undefined, persistSession: false, autoRefreshToken: false },
+  });
 }
 
 /** One-shot dashboard fetch: profile, nodes (with live status), summary, config, history. */
@@ -178,11 +189,10 @@ export const updateProfile = createServerFn({ method: "POST" })
 /** Public-ish stats for the landing page. No auth — uses admin client. */
 export const getNetworkStats = createServerFn({ method: "GET" })
   .handler(async () => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: config } = await supabaseAdmin.from("network_config").select("*").eq("id", 1).maybeSingle();
-    const { count: minerCount } = await supabaseAdmin.from("nodes").select("*", { count: "exact", head: true });
+    const supabasePublic = createPublicSupabaseClient();
+    const { data: config } = await supabasePublic.from("network_config").select("active_miners,monthly_pool_usd").eq("id", 1).maybeSingle();
     const cfg = config ?? { active_miners: 4287, monthly_pool_usd: 184523, base_rate_per_gb: 0.012 };
-    const activeMiners = Math.max(Number(cfg.active_miners), minerCount ?? 0);
+    const activeMiners = Math.max(Number(cfg.active_miners), 1);
     return {
       active_miners: activeMiners,
       monthly_pool_usd: Number(cfg.monthly_pool_usd),
@@ -195,37 +205,21 @@ export const getLeaderboard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { scope: "global" | "country" }) => input)
   .handler(async ({ data, context }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: me } = await context.supabase.from("profiles").select("country").eq("user_id", context.userId).maybeSingle();
     const userCountry = me?.country || "";
 
-    const { data: nodes } = await supabaseAdmin.from("nodes").select("user_id,miner_token,tier,cumulative_coins");
-    const { data: profiles } = await supabaseAdmin.from("profiles").select("user_id,country");
-    const { data: config } = await supabaseAdmin.from("network_config").select("coin_to_usd_rate").eq("id",1).maybeSingle();
-    const rate = Number(config?.coin_to_usd_rate ?? 0.05);
+    let query = context.supabase.from("leaderboard_entries").select("user_id,masked_id,country,tier,usd").order("usd", { ascending: false }).limit(50);
+    if (data.scope === "country" && userCountry) query = query.eq("country", userCountry);
+    const { data: entries, error } = await query;
+    if (error) throw error;
 
-    const byUser = new Map<string, { coins: number; token: string; tier: number }>();
-    for (const n of (nodes as any[]) ?? []) {
-      const prev = byUser.get(n.user_id);
-      const coins = (prev?.coins ?? 0) + Number(n.cumulative_coins ?? 0);
-      byUser.set(n.user_id, { coins, token: prev?.token ?? n.miner_token, tier: prev?.tier ?? n.tier });
-    }
-    const profileMap = new Map((profiles ?? []).map(p => [p.user_id, p]));
-
-    let rows = Array.from(byUser.entries())
-      .filter(([, v]) => v.coins > 0 || byUser.size <= 50) // include zero-coin nodes only if leaderboard is sparse
-      .map(([user_id, v]) => {
-        const prof = profileMap.get(user_id);
-        return {
-          user_id,
-          masked_id: v.token.length > 8 ? `${v.token.slice(0,4)}…${v.token.slice(-4)}` : v.token,
-          country: prof?.country || "—",
-          tier: v.tier,
-          usd: v.coins * rate,
-          is_me: user_id === context.userId,
-        };
-      });
-    if (data.scope === "country" && userCountry) rows = rows.filter(r => r.country === userCountry);
-    rows.sort((a, b) => b.usd - a.usd);
-    return { rows: rows.slice(0, 50), userCountry };
+    const rows = (entries ?? []).map((entry) => ({
+      user_id: entry.user_id,
+      masked_id: entry.masked_id,
+      country: entry.country,
+      tier: entry.tier,
+      usd: Number(entry.usd),
+      is_me: entry.user_id === context.userId,
+    }));
+    return { rows, userCountry };
   });
