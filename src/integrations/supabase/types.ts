@@ -226,28 +226,19 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      leaderboard_public: {
+        Row: {
+          country: string | null
+          masked_id: string | null
+          tier: number | null
+          usd: number | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
-      get_leaderboard_public: {
-        Args: { _scope?: string; _viewer_id: string }
-        Returns: {
-          country: string
-          is_me: boolean
-          masked_id: string
-          tier: number
-          usd: number
-          user_id: string
-        }[]
-      }
-      get_network_stats_public: {
-        Args: never
-        Returns: {
-          active_miners: number
-          avg_monthly_usd: number
-          monthly_pool_usd: number
-        }[]
-      }
+      [_ in never]: never
     }
     Enums: {
       [_ in never]: never
