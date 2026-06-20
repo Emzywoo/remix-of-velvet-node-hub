@@ -256,7 +256,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      refresh_leaderboard_entry_for_user: {
+        Args: { _user_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
