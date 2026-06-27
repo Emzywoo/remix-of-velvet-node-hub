@@ -4,6 +4,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { getLeaderboard, getDashboardData } from "@/lib/miner.functions";
 import { AppShell } from "@/components/AppShell";
 import { TierBadge } from "@/components/TierBadge";
+import { DataLoadError } from "@/components/DataLoadError";
+import { isAuthSessionError, useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 import { useState } from "react";
 
 export const Route = createFileRoute("/_authenticated/leaderboard")({
@@ -15,8 +17,17 @@ function Leaderboard() {
   const [scope, setScope] = useState<"global" | "country">("global");
   const fetchLB = useServerFn(getLeaderboard);
   const fetchDash = useServerFn(getDashboardData);
-  const { data } = useQuery({ queryKey: ["lb", scope], queryFn: () => fetchLB({ data: { scope } }) });
-  const { data: dash } = useQuery({ queryKey: ["dashboard"], queryFn: () => fetchDash() });
+  const { data, error, refetch } = useQuery({
+    queryKey: ["lb", scope],
+    queryFn: () => fetchLB({ data: { scope } }),
+    retry: (failureCount, queryError) => !isAuthSessionError(queryError) && failureCount < 2,
+  });
+  const { data: dash, error: dashError } = useQuery({
+    queryKey: ["dashboard"],
+    queryFn: () => fetchDash(),
+    retry: (failureCount, queryError) => !isAuthSessionError(queryError) && failureCount < 2,
+  });
+  useAuthErrorHandler(error || dashError);
   const anyActive = dash?.nodes.some(n => n.status === "ACTIVE") ?? false;
   const top = data?.rows[0];
 
@@ -30,6 +41,8 @@ function Leaderboard() {
             <button onClick={() => setScope("country")} className={`rounded-md px-3 py-1.5 ${scope === "country" ? "bg-surface-2 text-rift" : "text-muted-foreground"}`}>My Country</button>
           </div>
         </header>
+
+        {error && !data && !isAuthSessionError(error) && <DataLoadError error={error} onRetry={() => refetch()} />}
 
         {top && (
           <div className="rounded-2xl border border-rift/30 bg-surface p-6 relative overflow-hidden">

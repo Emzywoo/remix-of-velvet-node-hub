@@ -5,6 +5,8 @@ import { getDashboardData, requestPayout } from "@/lib/miner.functions";
 import { AppShell } from "@/components/AppShell";
 import { NodeCard } from "@/components/NodeCard";
 import { CountUp } from "@/components/CountUp";
+import { DataLoadError } from "@/components/DataLoadError";
+import { isAuthSessionError, useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 import { useMemo, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { Flame, Crown, Trophy, X } from "lucide-react";
@@ -17,16 +19,20 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 function Dashboard() {
   const fetchData = useServerFn(getDashboardData);
-  const { data, isLoading } = useQuery({
+  const { data, error, isLoading, refetch } = useQuery({
     queryKey: ["dashboard"],
     queryFn: () => fetchData(),
     refetchInterval: 3000,
+    retry: (failureCount, queryError) => !isAuthSessionError(queryError) && failureCount < 2,
   });
+  useAuthErrorHandler(error);
   const anyActive = data?.nodes.some(n => n.status === "ACTIVE") ?? false;
 
   return (
     <AppShell anyNodeActive={anyActive}>
-      {isLoading || !data ? (
+      {error && !data && !isAuthSessionError(error) ? (
+        <DataLoadError error={error} onRetry={() => refetch()} />
+      ) : isLoading || !data ? (
         <DashboardSkeleton />
       ) : (
         <DashboardContent data={data} />

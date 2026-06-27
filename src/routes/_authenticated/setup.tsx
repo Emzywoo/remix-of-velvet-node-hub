@@ -2,8 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { AppShell } from "@/components/AppShell";
+import { DataLoadError } from "@/components/DataLoadError";
 import { syncMinerWithCore } from "@/lib/trimlt.functions";
 import { getDashboardData } from "@/lib/miner.functions";
+import { isAuthSessionError, useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 import { Check, Copy, Download, Apple, Monitor, Terminal, Smartphone } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -30,7 +32,13 @@ function Setup() {
   const queryClient = useQueryClient();
   const fetchData = useServerFn(getDashboardData);
   const sync = useServerFn(syncMinerWithCore);
-  const { data, refetch } = useQuery({ queryKey: ["dashboard"], queryFn: () => fetchData(), refetchInterval: 3000 });
+  const { data, error, refetch } = useQuery({
+    queryKey: ["dashboard"],
+    queryFn: () => fetchData(),
+    refetchInterval: 3000,
+    retry: (failureCount, queryError) => !isAuthSessionError(queryError) && failureCount < 2,
+  });
+  useAuthErrorHandler(error);
 
   const anyActive = data?.nodes.some(n => n.status === "ACTIVE") ?? false;
   const primaryNode = data?.nodes[0];
@@ -41,6 +49,7 @@ function Setup() {
     onSuccess: () => { toast.success("Node registered. Download your binary below to start."); queryClient.invalidateQueries({ queryKey: ["dashboard"] }); },
     onError: (e: any) => toast.error(e.message),
   });
+  useAuthErrorHandler(createNode.error);
 
   const [celebrated, setCelebrated] = useState(false);
   useEffect(() => { if (anyActive && !celebrated) { setCelebrated(true); toast.success("Node connected — you are now earning 🎉"); } }, [anyActive, celebrated]);
@@ -55,6 +64,8 @@ function Setup() {
           <h1 className="mt-3 text-4xl font-bold tracking-tight">Get Your Node Running</h1>
           <p className="mt-2 text-muted-foreground">Three steps. Ten minutes. Then your machine earns while you sleep.</p>
         </header>
+
+        {error && !data && !isAuthSessionError(error) && <DataLoadError error={error} onRetry={() => refetch()} />}
 
         {!primaryNode && (
           <div className="rounded-xl border border-amber/40 bg-amber/10 p-4 flex items-center justify-between gap-4">
