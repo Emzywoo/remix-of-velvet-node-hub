@@ -28,11 +28,15 @@ function createPublicSupabaseClient() {
   });
 }
 
+function assertSupabaseOk(label: string, error: { message?: string } | null | undefined) {
+  if (error) throw new Error(`${label} failed: ${error.message ?? "Database request failed"}`);
+}
+
 /** One-shot dashboard fetch: profile, nodes (with live status), summary, config, history. */
 export const getDashboardData = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { supabase, userId } = context;
+    const { supabase, userId, claims } = context;
 
     const [profileRes, nodesRes, configRes, snapsRes, payoutsRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
@@ -43,6 +47,24 @@ export const getDashboardData = createServerFn({ method: "GET" })
         .order("snapshot_date"),
       supabase.from("payouts").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
     ]);
+
+    assertSupabaseOk("Profile load", profileRes.error);
+    assertSupabaseOk("Nodes load", nodesRes.error);
+    assertSupabaseOk("Network config load", configRes.error);
+    assertSupabaseOk("Earnings history load", snapsRes.error);
+    assertSupabaseOk("Payout history load", payoutsRes.error);
+
+    let profile = profileRes.data;
+    if (!profile) {
+      const email = typeof claims?.email === "string" ? claims.email : "";
+      const { data: createdProfile, error: profileCreateError } = await supabase
+        .from("profiles")
+        .upsert({ user_id: userId, email }, { onConflict: "user_id" })
+        .select("*")
+        .maybeSingle();
+      assertSupabaseOk("Profile setup", profileCreateError);
+      profile = createdProfile;
+    }
 
     const config = configRes.data ?? { coin_to_usd_rate: 0.05, base_rate_per_gb: 0.012, minimum_payout_usd: 5, monthly_pool_usd: 184523, active_miners: 4287 };
     const nodes = nodesRes.data ?? [];
@@ -97,7 +119,8 @@ export const getDashboardData = createServerFn({ method: "GET" })
         active_jobs: cumJobs,
         last_seen: lastSeen,
       };
-      await supabase.from("nodes").update(patch).eq("id", n.id);
+      const { error: nodeUpdateError } = await supabase.from("nodes").update(patch).eq("id", n.id);
+      if (nodeUpdateError) console.warn("Node status sync failed:", nodeUpdateError.message);
 
       return { ...n, ...patch };
     }));
@@ -107,13 +130,14 @@ export const getDashboardData = createServerFn({ method: "GET" })
     const todaySnap = (snapsRes.data ?? []).find(s => s.snapshot_date === today);
     const nextTodayCoins = Math.max(Number(todaySnap?.total_coins ?? 0), totalCoins);
     const nextTodayJobs = Math.max(Number(todaySnap?.jobs_completed ?? 0), totalJobs);
-    await supabase.from("earnings_snapshots").upsert({
+    const { error: snapshotError } = await supabase.from("earnings_snapshots").upsert({
       user_id: userId,
       snapshot_date: today,
       total_coins: nextTodayCoins,
       jobs_completed: nextTodayJobs,
       gb_processed: Number(todaySnap?.gb_processed ?? 0),
     }, { onConflict: "user_id,snapshot_date" });
+    if (snapshotError) console.warn("Earnings snapshot sync failed:", snapshotError.message);
 
     const totalEarnedUsd = totalCoins * Number(config.coin_to_usd_rate);
 
@@ -136,7 +160,7 @@ export const getDashboardData = createServerFn({ method: "GET" })
     const pendingPayoutUsd = Math.max(0, totalEarnedUsd - paidOut);
 
     return {
-      profile: profileRes.data,
+      profile,
       nodes: liveNodes,
       config,
       totals: {
@@ -181,7 +205,7 @@ export const updateProfile = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: Partial<{ full_name: string; country: string; sound_enabled: boolean; notify_offline: boolean; notify_tier: boolean; notify_payout: boolean }>) => input)
   .handler(async ({ data, context }) => {
-    const { error } = await context.supabase.from("profiles").update(data).eq("user_id", context.userId);
+    const { error } = await context.supabase.from("profiles").upsert({ ...data, user_id: context.userId }, { onConflict: "user_id" });
     if (error) throw error;
     return { ok: true };
   });

@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getDashboardData } from "@/lib/miner.functions";
 import { AppShell } from "@/components/AppShell";
+import { DataLoadError } from "@/components/DataLoadError";
+import { isAuthSessionError, useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 
 export const Route = createFileRoute("/_authenticated/earnings")({
   head: () => ({ meta: [{ title: "Earnings — NODERIFT" }] }),
@@ -11,7 +13,12 @@ export const Route = createFileRoute("/_authenticated/earnings")({
 
 function Earnings() {
   const fetchData = useServerFn(getDashboardData);
-  const { data } = useQuery({ queryKey: ["dashboard"], queryFn: () => fetchData() });
+  const { data, error, refetch } = useQuery({
+    queryKey: ["dashboard"],
+    queryFn: () => fetchData(),
+    retry: (failureCount, queryError) => !isAuthSessionError(queryError) && failureCount < 2,
+  });
+  useAuthErrorHandler(error);
   const anyActive = data?.nodes.some(n => n.status === "ACTIVE") ?? false;
   const rate = Number(data?.config.coin_to_usd_rate ?? 0.05);
   const tier = data?.nodes[0]?.tier ?? 3;
@@ -21,6 +28,8 @@ function Earnings() {
     <AppShell anyNodeActive={anyActive}>
       <div className="space-y-6 max-w-5xl mx-auto">
         <h1 className="text-3xl font-bold">Earnings & Payouts</h1>
+
+        {error && !data && !isAuthSessionError(error) && <DataLoadError error={error} onRetry={() => refetch()} />}
 
         <section className="rounded-2xl border border-border bg-surface overflow-hidden">
           <div className="px-5 py-3 border-b border-border text-sm font-semibold">History</div>

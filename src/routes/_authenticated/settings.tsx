@@ -4,6 +4,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { getDashboardData, removeNode, updateProfile } from "@/lib/miner.functions";
 import { syncMinerWithCore } from "@/lib/trimlt.functions";
 import { AppShell } from "@/components/AppShell";
+import { DataLoadError } from "@/components/DataLoadError";
+import { isAuthSessionError, useAuthErrorHandler } from "@/hooks/useAuthErrorHandler";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Trash2, Plus } from "lucide-react";
@@ -19,9 +21,14 @@ function Settings() {
   const updProfile = useServerFn(updateProfile);
   const remove = useServerFn(removeNode);
   const sync = useServerFn(syncMinerWithCore);
-  const { data } = useQuery({ queryKey: ["dashboard"], queryFn: () => fetchData() });
+  const { data, error, refetch } = useQuery({
+    queryKey: ["dashboard"],
+    queryFn: () => fetchData(),
+    retry: (failureCount, queryError) => !isAuthSessionError(queryError) && failureCount < 2,
+  });
   const anyActive = data?.nodes.some(n => n.status === "ACTIVE") ?? false;
   const [form, setForm] = useState({ full_name: "", country: "", sound_enabled: false, notify_offline: true, notify_tier: true, notify_payout: true });
+  useAuthErrorHandler(error);
 
   useEffect(() => {
     if (data?.profile) setForm({
@@ -51,11 +58,14 @@ function Settings() {
     onSuccess: () => { toast.success("Node removed"); queryClient.invalidateQueries({ queryKey: ["dashboard"] }); },
     onError: (e: any) => toast.error(e.message),
   });
+  useAuthErrorHandler(save.error || addNode.error || del.error);
 
   return (
     <AppShell anyNodeActive={anyActive}>
       <div className="max-w-3xl mx-auto space-y-6">
         <h1 className="text-3xl font-bold">Settings</h1>
+
+        {error && !data && !isAuthSessionError(error) && <DataLoadError error={error} onRetry={() => refetch()} />}
 
         <Section title="Account">
           <Row label="Full name">
