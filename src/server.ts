@@ -3,6 +3,19 @@ import "./lib/error-capture";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 
+// Bulletproof env bootstrap: the Supabase URL + publishable (anon) key are
+// PUBLIC values (same as VITE_SUPABASE_*). Ship them as hard runtime
+// fallbacks so server functions work on ANY host (Vercel, Cloudflare, etc.)
+// even if the build-time `define` injection or dashboard env vars are absent.
+// The service-role key is never included here.
+const PUBLIC_SUPABASE_URL = "https://sykqbwmbunubwslebbcl.supabase.co";
+const PUBLIC_SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN5a3Fid21idW51YndzbGViYmNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4ODgxNDIsImV4cCI6MjA5NzQ2NDE0Mn0.s2hX3Xe9Y2T4s7orPCxZMbYHMQmFXle8n1CwZr8gmm0";
+if (typeof process !== "undefined" && process.env) {
+  if (!process.env.SUPABASE_URL) process.env.SUPABASE_URL = PUBLIC_SUPABASE_URL;
+  if (!process.env.SUPABASE_PUBLISHABLE_KEY) process.env.SUPABASE_PUBLISHABLE_KEY = PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+}
+
+
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
 };
