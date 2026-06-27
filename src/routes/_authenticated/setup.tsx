@@ -88,23 +88,42 @@ function Setup() {
 
         {/* STEP 2 */}
         <StepCard step={2} title="Run it with your token">
+          <div className="rounded-lg border border-rift/30 bg-rift/5 p-3 text-xs text-muted-foreground">
+            <span className="font-semibold text-rift">One-liner deploy:</span> copy, paste, hit enter. Downloads, sets permissions, and starts your node — deploy and forget.
+          </div>
           <Instruction
-            label="Windows"
-            description="Open Command Prompt or PowerShell in the folder where you downloaded the file, then run:"
-            code={`${BIN_WIN} -token ${token}`}
+            label="Windows (PowerShell)"
+            description="Open PowerShell anywhere and paste:"
+            code={`iwr -Uri "${DL_BASE}?os=windows&arch=amd64" -OutFile ${BIN_WIN}; .\\${BIN_WIN} -token ${token}`}
           />
           <Instruction
-            label="macOS / Linux"
-            description="Open Terminal in the download folder, make it executable, then run:"
-            code={`chmod +x ${BIN} && ./${BIN} -token ${token}`}
+            label="macOS · Apple Silicon"
+            description="Open Terminal and paste:"
+            code={`curl -L "${DL_BASE}?os=darwin&arch=arm64" -o ${BIN} && chmod +x ${BIN} && ./${BIN} -token ${token}`}
           />
           <Instruction
-            label="Android (Termux)"
-            description="In Termux, give it permission to run and start it with your token:"
-            code={`chmod +x ${BIN} && ./${BIN} -token ${token}`}
+            label="macOS · Intel"
+            description="Open Terminal and paste:"
+            code={`curl -L "${DL_BASE}?os=darwin&arch=amd64" -o ${BIN} && chmod +x ${BIN} && ./${BIN} -token ${token}`}
+          />
+          <Instruction
+            label="Linux · x64"
+            description="Open a shell and paste:"
+            code={`curl -L "${DL_BASE}?os=linux&arch=amd64" -o ${BIN} && chmod +x ${BIN} && ./${BIN} -token ${token}`}
+          />
+          <Instruction
+            label="Linux · ARM64 (Raspberry Pi, SBCs)"
+            description="Open a shell and paste:"
+            code={`curl -L "${DL_BASE}?os=linux&arch=arm64" -o ${BIN} && chmod +x ${BIN} && ./${BIN} -token ${token}`}
+          />
+          <Instruction
+            label="Android · Termux"
+            description="Install Termux from F-Droid, open it, and paste:"
+            code={`pkg install -y curl && curl -L "${DL_BASE}?os=android&arch=arm64" -o ${BIN} && chmod +x ${BIN} && ./${BIN} -token ${token}`}
           />
           <p className="text-xs text-muted-foreground">
-            Leave the window open. As long as it stays running, your node is online and earning.
+            Leave the window open — as long as it stays running, your node is online and earning.
+            Tip: on Linux, prepend <code className="text-rift">nohup</code> and append <code className="text-rift">&amp;</code> to keep it running after closing the terminal.
           </p>
         </StepCard>
 
